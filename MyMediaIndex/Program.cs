@@ -22,7 +22,7 @@ namespace MyMediaIndex
 //	        var basePath = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
 //	        var basePath = @"C:\Temp\MyMediaTest";
 	        var basePath = @"C:\Program Files\MyMediaForAlexa";
-	        var indexPath = Path.Combine(basePath, "Index_test");
+	        var indexPath = Path.Combine(basePath, "Index");
 
 	        using var dir = FSDirectory.Open(indexPath);
 
@@ -33,6 +33,8 @@ namespace MyMediaIndex
 	        var indexConfig = new IndexWriterConfig(AppLuceneVersion, analyzer);
 	        using var writer = new IndexWriter(dir, indexConfig);
 
+
+			// Sample code for writing to the index (we won't be needing to do that)
 
 			///////////////////////
 			//var source = new
@@ -54,11 +56,13 @@ namespace MyMediaIndex
 			//		source.OtherField,
 			//		Field.Store.YES)
 			//};
-
 			//writer.AddDocument(doc);
 			//writer.Flush(triggerMerge: false, applyAllDeletes: false);
 
+#if false
+	        
 
+			// Sample code for searching the Index (we may be needing to do that at some point
 			//////////////
 			// Search with a phrase
 			var phrase = new MultiPhraseQuery
@@ -68,7 +72,7 @@ namespace MyMediaIndex
 			};
 
 			//////////////////
-
+#endif
 			// Re-use the writer to get real-time updates
 			using var reader = writer.GetReader(applyAllDeletes: true);
 			var searcher = new IndexSearcher(reader);
@@ -85,7 +89,7 @@ namespace MyMediaIndex
 			for (int hit = 0; hit < searcher.IndexReader.MaxDoc; hit++)
 			{
 				var foundDoc = searcher.Doc(hit);
-				if (foundDoc == null) break;
+
 				var docType = foundDoc.GetDocumentType();
 				switch(docType)
 				{
@@ -101,14 +105,12 @@ namespace MyMediaIndex
 					case DocumentTypes.Genre:
 						genres.Add(foundDoc.ReadGenre());
 						break;
-					default:
+					default:	// in case there is some other type of document in the index (haven't found anymore)
 						foreach (var field in foundDoc.Fields)
 							Console.WriteLine(field);
 						break;
 					
 				}
-				//Console.WriteLine($" {hits[hit].Score,10} {foundDoc.Get("name"),-15} {foundDoc.Get("favoritePhrase"),-40}");
-				
 			}
 			var elapsed = Stopwatch.GetElapsedTime(ts);
 
@@ -128,28 +130,29 @@ namespace MyMediaIndex
 
 #if true
 #if true
-			var bSongs = songs.Where(song =>
+			// create playlist of song added in the last 160 days
+			var selectedSongs = songs.Where(song =>
 			{
 				var fi = new FileInfo(song.Filename);
 				return fi.CreationTime > DateTime.Now.AddDays(-160);
 			}		
 			).ToList();
-	        WritePlayList(bSongs, "New Stuff");
+	        WritePlayList(selectedSongs, "New Stuff");
 
 #endif
 #if true
-			 bSongs = songs.Where(song =>
+			// create playlist of song added in the last year, and played less than 5 times
+			 selectedSongs = songs.Where(song =>
 			{
 				var fi = new FileInfo(song.Filename);
 				return fi.CreationTime > DateTime.Now.AddYears(-1) && song.PlayCount < 5;
 			}		
 			).ToList();
-	        var plName = ;
+			WritePlayList(selectedSongs, "Unplayed Recent");
 #endif
 
 			//var groups =songs.GroupBy(song=> song.PlayCount).ToList();
 
-			WritePlayList(bSongs, "Unplayed Recent");
 #endif
 
 
@@ -160,35 +163,31 @@ namespace MyMediaIndex
         {
 	        var totalDuration = songs.Sum(song=>song.Duration.TotalSeconds);
 	        var plFile = Path.Combine(@"M:\Music\Playlists", Path.ChangeExtension(plName, ".wpl"));
-	        using (var tw = File.CreateText(plFile))
+	        using var tw = File.CreateText(plFile);
+	        tw.WriteLine($"""
+	                      <?wpl version="1.0"?>
+	                        <smil>
+	                            <head>
+	                                <meta name="Generator" content="MyMediaIndex"/>
+	                                <meta name="TotalDuration" content="{totalDuration}"/>
+	                                <meta name="ItemCount" content="{songs.Count}"/>
+	                                <author/>
+	                                <title>{plName}</title>
+	                            </head>
+	                            <body>
+	                            <seq>
+	                      """);
+
+	        foreach (var song in songs)
 	        {
-
-		        tw.WriteLine($"""
-		                      <?wpl version="1.0"?>
-		                        <smil>
-		                            <head>
-		                                <meta name="Generator" content="MyMediaIndex"/>
-		                                <meta name="TotalDuration" content="{totalDuration}"/>
-		                                <meta name="ItemCount" content="{songs.Count}"/>
-		                                <author/>
-		                                <title>{plName}</title>
-		                            </head>
-		                            <body>
-		                            <seq>
-		                      """);
-
-		        foreach (var song in songs)
-		        {
-			        tw.WriteLine($"\t<media src=\"{HttpUtility.HtmlEncode(song.Filename)}\" tid=\"{song.Guid}\" />");
-		        }
-		        tw.Write($"""
-		                        </seq>
-		                       </body>
-		                  </smil>
-
-		                  """);
-
+		        tw.WriteLine($"\t<media src=\"{HttpUtility.HtmlEncode(song.Filename)}\" tid=\"{song.Guid}\" />");
 	        }
+	        tw.Write($"""
+	                        </seq>
+	                       </body>
+	                  </smil>
+
+	                  """);
         }
     }
 }
